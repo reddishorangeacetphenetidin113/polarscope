@@ -55,7 +55,50 @@
       <section id="features" class="features">
         <div class="container">
           <h2>What you get.</h2>
-          <ul class="features__grid"></ul>
+          <ul class="features__grid">
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+              </svg>
+              <h3>Live polar plot</h3>
+              <p>~10&nbsp;Hz scans rendered in real time with scan-rate and point-count readout.</p>
+            </li>
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h2M11 10h2M15 10h2M7 14h10"/>
+              </svg>
+              <h3>Port auto-discovery</h3>
+              <p>Filters <code>pyserial</code> enumeration to USB-CDC / CP210x. One click.</p>
+            </li>
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 5l1.5-2h3L15 5"/>
+              </svg>
+              <h3>Snapshot PNG</h3>
+              <p>Retina-aware, device-pixel resolution.</p>
+            </li>
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+              </svg>
+              <h3>CSV recording</h3>
+              <p>Per-scan append, blinking REC indicator while active.</p>
+            </li>
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12h4l3-7 4 14 3-7h4"/>
+              </svg>
+              <h3>Range &amp; quality filter</h3>
+              <p>5&nbsp;cm – 12&nbsp;m, quality &gt; 0.</p>
+            </li>
+            <li class="feature">
+              <svg class="feature__icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/>
+              </svg>
+              <h3>Background QThread</h3>
+              <p>UI never blocks on serial I/O.</p>
+            </li>
+          </ul>
         </div>
       </section>
 
