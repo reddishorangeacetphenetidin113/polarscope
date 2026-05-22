@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
         s, w = self._sidebar, self._worker
         s.connect_requested.connect(self._on_connect_clicked)
         self._request_open.connect(w.open_device, Qt.QueuedConnection)
-        s.disconnect_requested.connect(w.close_device, Qt.QueuedConnection)
+        s.disconnect_requested.connect(self._on_disconnect_clicked)
         s.start_requested.connect(w.start_scan, Qt.QueuedConnection)
         s.stop_requested.connect(self._on_stop)
         s.refresh_requested.connect(self._on_refresh)
@@ -78,6 +78,8 @@ class MainWindow(QMainWindow):
         w.status_changed.connect(s.set_state)
         w.status_changed.connect(self._on_status)
         w.error_occurred.connect(self._on_error)
+        w.record_failed.connect(s.on_record_failed)
+        w.record_failed.connect(self._status.rec.stop)
 
     # ----- handlers -----
 
@@ -90,7 +92,18 @@ class MainWindow(QMainWindow):
     def _on_stop(self) -> None:
         # Direct, NOT a Qt slot — must bypass queued dispatch because scan loop
         # blocks the worker's event loop.
+        if self._sidebar.is_recording:
+            self._banner.show_info("Recording stopped.")
         self._worker._stop_event.set()
+
+    def _on_disconnect_clicked(self) -> None:
+        # Same threading constraint as _on_stop: the scan loop blocks the
+        # worker's event loop, so a queued close_device can't run until we
+        # break the loop directly from the UI thread.
+        if self._sidebar.is_recording:
+            self._banner.show_info("Recording stopped.")
+        self._worker._stop_event.set()
+        QMetaObject.invokeMethod(self._worker, "close_device", Qt.QueuedConnection)
 
     def _on_refresh(self) -> None:
         self._sidebar.set_ports(list_serial_ports())

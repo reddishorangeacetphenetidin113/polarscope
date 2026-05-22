@@ -233,3 +233,16 @@ def test_open_device_serial_failure_emits_cannot_open(qapp, serial_holder):
         worker.error_occurred.connect(errors.append)
         worker.open_device("/dev/cu.usbserial-MISSING")
     assert any("cannot open" in e.lower() for e in errors)
+
+
+def test_record_started_unwritable_path_emits_record_failed(qapp, tmp_path):
+    worker = LidarWorker()
+    failures: list[None] = []
+    errors: list[str] = []
+    worker.record_failed.connect(lambda: failures.append(None))
+    worker.error_occurred.connect(errors.append)
+    bogus = str(tmp_path / "nonexistent_dir" / "scan.csv")
+    worker.record_started(bogus)
+    assert len(failures) == 1
+    assert any("cannot record" in e.lower() for e in errors)
+    assert worker._recorder is None

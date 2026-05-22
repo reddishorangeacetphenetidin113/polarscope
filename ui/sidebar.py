@@ -1,7 +1,7 @@
 """Sidebar: port selection + connect/scan/snapshot/record controls."""
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -96,10 +96,12 @@ class Sidebar(QFrame):
         self._snapshot_btn = QPushButton("Save Snapshot")
         self._snapshot_btn.setEnabled(False)
         self._record_btn = QPushButton("Record CSV")
-        self._record_btn.setCheckable(True)
         self._record_btn.setEnabled(False)
+        self._stop_record_btn = QPushButton("Stop Recording")
+        self._stop_record_btn.hide()
         layout.addWidget(self._snapshot_btn)
         layout.addWidget(self._record_btn)
+        layout.addWidget(self._stop_record_btn)
 
         layout.addStretch(1)
 
@@ -111,13 +113,17 @@ class Sidebar(QFrame):
         led_row.addStretch(1)
         layout.addLayout(led_row)
 
+        self._state = "disconnected"
+        self._recording = False
+
         self._refresh_btn.clicked.connect(self.refresh_requested.emit)
         self._connect_btn.clicked.connect(self._on_connect)
         self._disconnect_btn.clicked.connect(self.disconnect_requested.emit)
         self._start_btn.clicked.connect(self.start_requested.emit)
         self._stop_btn.clicked.connect(self.stop_requested.emit)
         self._snapshot_btn.clicked.connect(self.snapshot_requested.emit)
-        self._record_btn.toggled.connect(self._on_record_toggled)
+        self._record_btn.clicked.connect(self._on_record_clicked)
+        self._stop_record_btn.clicked.connect(self._on_stop_recording_clicked)
 
     # ----- public slots called by MainWindow -----
 
@@ -135,6 +141,7 @@ class Sidebar(QFrame):
         self._port_combo.blockSignals(False)
 
     def set_state(self, state: str) -> None:
+        self._state = state
         self._state_label.setText(state.capitalize())
         self._led.set_state(state)
         connected = state in (
@@ -147,10 +154,23 @@ class Sidebar(QFrame):
         self._start_btn.setVisible(not scanning)
         self._start_btn.setEnabled(connected and not scanning)
         self._stop_btn.setVisible(scanning)
-        # Record only while actively scanning — prevents orphan empty CSVs.
-        self._record_btn.setEnabled(scanning)
-        if not scanning and self._record_btn.isChecked():
-            self._record_btn.setChecked(False)
+        # Leaving the scanning state while still flagged as recording (e.g. device
+        # unplug, scan-loop error) — fire record_stopped so the recorder closes
+        # cleanly, then drop the flag.
+        if not scanning and self._recording:
+            self._recording = False
+            self.record_stopped.emit()
+        self._update_record_buttons()
+
+    def _update_record_buttons(self) -> None:
+        scanning = self._state == "scanning"
+        self._record_btn.setVisible(not self._recording)
+        self._record_btn.setEnabled(scanning and not self._recording)
+        self._stop_record_btn.setVisible(self._recording)
+
+    @property
+    def is_recording(self) -> bool:
+        return self._recording
 
     def set_connect_busy(self, busy: bool) -> None:
         """Debounce: disable Connect while a connect attempt is in flight."""
@@ -174,16 +194,27 @@ class Sidebar(QFrame):
         if port:
             self.connect_requested.emit(port)
 
-    def _on_record_toggled(self, checked: bool) -> None:
-        if checked:
-            path, _ = QFileDialog.getSaveFileName(
-                self, "Save scan to CSV", "scan.csv", "CSV files (*.csv)"
-            )
-            if not path:
-                self._record_btn.blockSignals(True)
-                self._record_btn.setChecked(False)
-                self._record_btn.blockSignals(False)
-                return
-            self.record_started.emit(path)
-        else:
-            self.record_stopped.emit()
+    def _on_record_clicked(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save scan to CSV", "scan.csv", "CSV files (*.csv)"
+        )
+        if not path:
+            return
+        self._recording = True
+        self._update_record_buttons()
+        self.record_started.emit(path)
+
+    def _on_stop_recording_clicked(self) -> None:
+        if not self._recording:
+            return
+        self._recording = False
+        self._update_record_buttons()
+        self.record_stopped.emit()
+
+    @Slot()
+    def on_record_failed(self) -> None:
+        """Worker rejected start (file unwritable etc) — revert UI state."""
+        if not self._recording:
+            return
+        self._recording = False
+        self._update_record_buttons()

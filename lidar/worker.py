@@ -34,6 +34,7 @@ class LidarWorker(QObject):
     stats = Signal(float, int)         # hz, n_points
     status_changed = Signal(str)       # "connected" | "connected (warning)" | "scanning" | "connected (idle)" | "disconnected"
     error_occurred = Signal(str)
+    record_failed = Signal()           # CsvRecorder.start raised — UI should revert recording state
 
     def __init__(self) -> None:
         super().__init__()
@@ -118,8 +119,15 @@ class LidarWorker(QObject):
     def record_started(self, path: str) -> None:
         if self._recorder is not None:
             self._recorder.stop()
-        self._recorder = CsvRecorder(path)
-        self._recorder.start()
+            self._recorder = None
+        recorder = CsvRecorder(path)
+        try:
+            recorder.start()
+        except OSError as exc:
+            self.error_occurred.emit(f"Cannot record to {path}: {exc}")
+            self.record_failed.emit()
+            return
+        self._recorder = recorder
 
     @Slot()
     def record_stopped(self) -> None:
