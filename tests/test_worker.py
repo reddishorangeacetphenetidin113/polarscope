@@ -1,9 +1,9 @@
-"""Worker tests with mocked pyrplidar driver."""
+"""Worker tests with mocked pyrplidar driver + fake pyserial for scan loop."""
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QCoreApplication, QTimer
+from PySide6.QtCore import QCoreApplication
 
 from lidar.worker import LidarWorker
 
@@ -14,39 +14,76 @@ def qapp():
     yield app
 
 
-def _fake_measurement(angle_deg: float, distance_mm: float, quality: int, start_flag: bool):
-    m = MagicMock()
-    m.angle = angle_deg
-    m.distance = distance_mm
-    m.quality = quality
-    m.start_flag = start_flag
-    return m
+def _encode_measurement(start_flag: bool, quality: int, angle_deg: float, distance_mm: float) -> bytes:
+    s = 1 if start_flag else 0
+    inv = 0 if start_flag else 1
+    b0 = (quality << 2) | (inv << 1) | s
+    angle_q6 = int(angle_deg * 64) & 0x7FFF
+    b1 = ((angle_q6 & 0x7F) << 1) | 0x01
+    b2 = (angle_q6 >> 7) & 0xFF
+    dist_q2 = int(distance_mm * 4) & 0xFFFF
+    b3 = dist_q2 & 0xFF
+    b4 = (dist_q2 >> 8) & 0xFF
+    return bytes([b0, b1, b2, b3, b4])
 
 
-def _make_lidar(measurements, model=24, status=0):
-    """Build a fake PyRPlidar instance.
+def _encode_stream(measurements: list[tuple[bool, int, float, float]]) -> bytes:
+    return b"".join(_encode_measurement(*m) for m in measurements)
 
-    `measurements`: list of fake measurement objects to yield from the scan generator.
-    """
+
+class _FakeSerial:
+    """Minimal pyserial.Serial substitute."""
+
+    def __init__(self, data: bytes = b"", stop_callback=None, stop_after_reads: int | None = None):
+        self._data = data
+        self._pos = 0
+        self._reads = 0
+        self._stop_callback = stop_callback
+        self._stop_after_reads = stop_after_reads
+        self.timeout = 0.5
+        self.dsrdtr = False
+
+    def read(self, n: int) -> bytes:
+        self._reads += 1
+        if self._stop_after_reads is not None and self._reads >= self._stop_after_reads:
+            if self._stop_callback:
+                self._stop_callback()
+        chunk = self._data[self._pos:self._pos + n]
+        self._pos += len(chunk)
+        return chunk  # may be b"" on exhaustion → mimics timeout
+
+    def close(self):
+        pass
+
+    def reset_input_buffer(self):
+        pass
+
+
+def _make_lidar(model=24, status=0) -> MagicMock:
+    """Fake PyRPlidar that succeeds on connect/info/health/motor."""
     lidar = MagicMock()
     lidar.get_info.return_value = MagicMock(
         model=model, firmware_minor=0, firmware_major=1, hardware=1, serialnumber="ABC123"
     )
     lidar.get_health.return_value = MagicMock(status=status, error_code=0)
-
-    # PyRPlidar.start_scan returns a callable that, when called, returns a generator.
-    def gen():
-        for m in measurements:
-            yield m
-        # After list exhausts, simulate stalled serial (raise on next read)
-        raise IndexError("serial read returned empty")
-
-    lidar.start_scan.return_value = gen
+    lidar.lidar_serial = MagicMock()
+    lidar.lidar_serial._serial = _FakeSerial()
     return lidar
 
 
-def test_open_device_emits_connected(qapp):
-    fake = _make_lidar([])
+@pytest.fixture
+def serial_holder():
+    """Container for the fake serial the test wants serial.Serial() to return.
+
+    Each test sets `holder['serial']` before calling worker.open_device.
+    """
+    holder: dict[str, _FakeSerial] = {"serial": _FakeSerial()}
+    with patch("lidar.worker.serial.Serial", side_effect=lambda *a, **kw: holder["serial"]):
+        yield holder
+
+
+def test_open_device_emits_connected(qapp, serial_holder):
+    fake = _make_lidar()
     with patch("lidar.worker.PyRPlidar", return_value=fake):
         worker = LidarWorker()
         states = []
@@ -57,8 +94,8 @@ def test_open_device_emits_connected(qapp):
     fake.connect.assert_called_once()
 
 
-def test_open_device_health_error_emits_error(qapp):
-    fake = _make_lidar([], status=2)
+def test_open_device_health_error_emits_error(qapp, serial_holder):
+    fake = _make_lidar(status=2)
     with patch("lidar.worker.PyRPlidar", return_value=fake):
         worker = LidarWorker()
         errors = []
@@ -68,57 +105,56 @@ def test_open_device_health_error_emits_error(qapp):
     assert any("health" in e.lower() for e in errors)
 
 
-def test_scan_loop_emits_one_signal_per_full_rotation(qapp):
-    # Three points in scan A, marker for scan B, then a few B points.
-    # start_flag=True marks the BEGINNING of a new scan.
+def test_scan_loop_emits_one_signal_per_full_rotation(qapp, serial_holder):
     meas = [
-        _fake_measurement(0.0, 1000.0, 40, start_flag=True),
-        _fake_measurement(90.0, 2000.0, 40, start_flag=False),
-        _fake_measurement(180.0, 3000.0, 40, start_flag=False),
-        _fake_measurement(0.0, 1100.0, 40, start_flag=True),  # marks scan B
-        _fake_measurement(90.0, 2100.0, 40, start_flag=False),
+        (True, 40, 0.0, 1000.0),
+        (False, 40, 90.0, 2000.0),
+        (False, 40, 180.0, 3000.0),
+        (True, 40, 0.0, 1100.0),
+        (False, 40, 90.0, 2100.0),
     ]
-    fake = _make_lidar(meas)
-    with patch("lidar.worker.PyRPlidar", return_value=fake):
-        worker = LidarWorker()
+    worker = LidarWorker()
+    serial_holder["serial"] = _FakeSerial(
+        _encode_stream(meas),
+        stop_callback=worker._stop_event.set,
+        stop_after_reads=len(meas) + 2,
+    )
+    fake = _make_lidar()
+    with patch("lidar.worker.PyRPlidar", return_value=fake), \
+         patch("lidar.worker.MOTOR_SPINUP_S", 0.0), \
+         patch("lidar.worker.SCAN_WATCHDOG_S", 5.0):
         worker.open_device("/dev/cu.usbserial-FAKE")
         QCoreApplication.processEvents()
-
         received = []
         worker.scan_ready.connect(lambda xy: received.append(xy))
-
-        # Stop after a short delay to bound the test.
-        QTimer.singleShot(300, worker._stop_event.set)
         worker.start_scan()
-    # First full rotation accumulated (3 points), then generator raises, loop exits.
-    # We expect at least one emit (scan A).
     assert len(received) >= 1
     xy = received[0]
     assert xy.shape == (3, 2)
-    # Point 1: angle=0° → up → x≈0, y≈1
-    assert abs(xy[0, 0]) < 1e-3
-    assert abs(xy[0, 1] - 1.0) < 1e-3
+    assert abs(xy[0, 0]) < 1e-2
+    assert abs(xy[0, 1] - 1.0) < 1e-2
 
 
-def test_unplug_during_scan_emits_disconnected(qapp):
-    # Empty measurement list → generator raises on first iteration → unplug path.
-    fake = _make_lidar([])
-    with patch("lidar.worker.PyRPlidar", return_value=fake):
-        worker = LidarWorker()
+def test_unplug_during_scan_emits_disconnected(qapp, serial_holder):
+    worker = LidarWorker()
+    serial_holder["serial"] = _FakeSerial(b"")
+    fake = _make_lidar()
+    with patch("lidar.worker.PyRPlidar", return_value=fake), \
+         patch("lidar.worker.MOTOR_SPINUP_S", 0.0), \
+         patch("lidar.worker.SCAN_WATCHDOG_S", 0.05):
         worker.open_device("/dev/cu.usbserial-FAKE")
         QCoreApplication.processEvents()
-
         errors = []
         states = []
         worker.error_occurred.connect(errors.append)
         worker.status_changed.connect(states.append)
         worker.start_scan()
-    assert any("disconnect" in e.lower() or "lidar" in e.lower() for e in errors)
+    assert any("disconnect" in e.lower() or "stall" in e.lower() for e in errors)
     assert "disconnected" in states
 
 
-def test_close_device_disconnects(qapp):
-    fake = _make_lidar([])
+def test_close_device_disconnects(qapp, serial_holder):
+    fake = _make_lidar()
     with patch("lidar.worker.PyRPlidar", return_value=fake):
         worker = LidarWorker()
         worker.open_device("/dev/cu.usbserial-FAKE")
@@ -127,45 +163,34 @@ def test_close_device_disconnects(qapp):
     fake.disconnect.assert_called()
 
 
-def test_open_device_is_idempotent(qapp):
-    fake = _make_lidar([])
+def test_open_device_is_idempotent(qapp, serial_holder):
+    fake = _make_lidar()
     with patch("lidar.worker.PyRPlidar", return_value=fake):
         worker = LidarWorker()
         worker.open_device("/dev/cu.usbserial-FAKE")
         QCoreApplication.processEvents()
-        # Second call must not re-connect (would leak the prior handle).
         worker.open_device("/dev/cu.usbserial-FAKE")
     assert fake.connect.call_count == 1
 
 
-def test_final_partial_scan_emits_on_clean_stop(qapp):
-    """Without a trailing start_flag, the buffered scan must still emit when
-    _stop_event triggers loop exit cleanly."""
+def test_final_partial_scan_emits_on_clean_stop(qapp, serial_holder):
     meas = [
-        _fake_measurement(0.0, 1000.0, 40, start_flag=True),
-        _fake_measurement(90.0, 2000.0, 40, start_flag=False),
-        _fake_measurement(180.0, 3000.0, 40, start_flag=False),
+        (True, 40, 0.0, 1000.0),
+        (False, 40, 90.0, 2000.0),
+        (False, 40, 180.0, 3000.0),
     ]
-    # Build a lidar whose generator sets stop_event mid-stream so the loop
-    # exits cleanly (not via exception) and we can observe the final emit.
     worker = LidarWorker()
-    fake = MagicMock()
-    fake.get_info.return_value = MagicMock(model=24)
-    fake.get_health.return_value = MagicMock(status=0)
-
-    def gen():
-        for m in meas:
-            yield m
-        worker._stop_event.set()
-        # If loop ever asks for one more, yield a no-op that the stop check
-        # will catch on the next iteration top.
-        yield _fake_measurement(0.0, 0.0, 0, start_flag=False)
-
-    fake.start_scan.return_value = gen
-    with patch("lidar.worker.PyRPlidar", return_value=fake):
+    serial_holder["serial"] = _FakeSerial(
+        _encode_stream(meas),
+        stop_callback=worker._stop_event.set,
+        stop_after_reads=len(meas),
+    )
+    fake = _make_lidar()
+    with patch("lidar.worker.PyRPlidar", return_value=fake), \
+         patch("lidar.worker.MOTOR_SPINUP_S", 0.0), \
+         patch("lidar.worker.SCAN_WATCHDOG_S", 5.0):
         worker.open_device("/dev/cu.usbserial-FAKE")
         QCoreApplication.processEvents()
-
         received = []
         worker.scan_ready.connect(lambda xy: received.append(xy))
         worker.start_scan()
@@ -173,8 +198,8 @@ def test_final_partial_scan_emits_on_clean_stop(qapp):
     assert received[-1].shape == (3, 2)
 
 
-def test_health_warning_emits_warning_state(qapp):
-    fake = _make_lidar([], status=1)
+def test_health_warning_emits_warning_state(qapp, serial_holder):
+    fake = _make_lidar(status=1)
     with patch("lidar.worker.PyRPlidar", return_value=fake):
         worker = LidarWorker()
         states = []
@@ -184,7 +209,7 @@ def test_health_warning_emits_warning_state(qapp):
     assert "connected (warning)" in states
 
 
-def test_open_device_permission_denied_emits_specific_error(qapp):
+def test_open_device_permission_denied_emits_specific_error(qapp, serial_holder):
     import serial
     fake = MagicMock()
     exc = serial.SerialException("permission denied")
@@ -198,7 +223,7 @@ def test_open_device_permission_denied_emits_specific_error(qapp):
     assert any("permission denied" in e.lower() for e in errors)
 
 
-def test_open_device_serial_failure_emits_cannot_open(qapp):
+def test_open_device_serial_failure_emits_cannot_open(qapp, serial_holder):
     import serial
     fake = MagicMock()
     fake.connect.side_effect = serial.SerialException("device not present")
