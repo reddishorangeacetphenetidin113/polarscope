@@ -23,6 +23,12 @@ env/
 !assets/**
 !docs/assets/**
 
+# PyInstaller / packaging
+build/
+dist/
+*.spec
+*.dmg
+
 # AI agents / assistants
 .claude/
 CLAUDE.local.md
