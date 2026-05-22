@@ -58,3 +58,45 @@ code, pre { font-family: var(--font-mono); }
   h1 { font-size: 64px; }
   h2 { font-size: 40px; }
 }
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: transparent;
+  transition: background 200ms ease, border-color 200ms ease;
+  border-bottom: 1px solid transparent;
+}
+.site-header.is-scrolled {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+.site-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+.brand__mark { color: var(--accent); }
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.site-nav a {
+  font-size: 14px;
+  color: var(--muted);
+}
+.site-nav a:hover { color: var(--text); }
+
+@media (max-width: 639px) {
+  .site-nav a:not([href*="github"]) { display: none; }
+}
