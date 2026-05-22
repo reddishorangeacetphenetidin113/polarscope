@@ -53,12 +53,16 @@ class Sidebar(QFrame):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        title = QLabel("RPLIDAR C1 Viewer")
+        title = QLabel("PolarScope")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
         layout.addWidget(title)
+
+        device_lbl = QLabel("RPLIDAR C1")
+        device_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        layout.addWidget(device_lbl)
 
         version_lbl = QLabel(f"v{VERSION}")
         version_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED};")

@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("RPLIDAR C1 Viewer")
+        self.setWindowTitle("PolarScope — RPLIDAR C1")
         self.resize(1200, 800)
 
         central = QWidget()
@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         root.addLayout(plot_col, stretch=1)
 
         self.setCentralWidget(central)
-        self._stats = attach_status_widgets(self.statusBar())
+        self._status = attach_status_widgets(self.statusBar())
 
         # Worker on a QThread
         self._thread = QThread(self)
@@ -70,9 +70,11 @@ class MainWindow(QMainWindow):
         s.snapshot_requested.connect(self._on_snapshot)
         s.record_started.connect(w.record_started, Qt.QueuedConnection)
         s.record_stopped.connect(w.record_stopped, Qt.QueuedConnection)
+        s.record_started.connect(lambda _path: self._status.rec.start())
+        s.record_stopped.connect(self._status.rec.stop)
 
         w.scan_ready.connect(self._on_scan_ready)
-        w.stats.connect(self._stats.update_stats)
+        w.stats.connect(self._status.stats.update_stats)
         w.status_changed.connect(s.set_state)
         w.status_changed.connect(self._on_status)
         w.error_occurred.connect(self._on_error)
