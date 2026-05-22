@@ -358,3 +358,16 @@ code, pre { font-family: var(--font-mono); }
 @media (min-width: 640px) {
   .site-footer__row { flex-direction: row; justify-content: space-between; text-align: left; }
 }
+
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 250ms ease-out, transform 250ms ease-out;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
