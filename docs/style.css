@@ -164,3 +164,30 @@ code, pre { font-family: var(--font-mono); }
 @media (min-width: 1024px) {
   .hero { padding: 128px 0 96px; }
 }
+
+.demo {
+  padding: 0 0 80px;
+}
+.demo__figure {
+  margin: 0;
+  text-align: center;
+}
+.demo__media {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+.demo__media--still { display: none; }
+.demo__figure figcaption {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo__media--motion { display: none; }
+  .demo__media--still  { display: block; margin-left: auto; margin-right: auto; }
+}
